@@ -1,13 +1,8 @@
 
 # =============
-#  This is Duplicate copy of original file just to make it compatible with Streamlit platform
-#  Stress-Ribbon / Catenary Cable Profiler
-#
-#  ⚠️  NOTE TO FUTURE MAINTAINERS: Written at multiple mid-night sessiongs with coffee in hand.
-#      If something looks weird, blame the caffeine, not the code.
-#
+#  Stress-Ribbon / Catenary Cable Profiler (Streamlit Version)
 #  ✍️  Authors: Vijaykumar Parmar & Dr. K. B. Parikh  (2025)
-# ===============
+# =============
 
 import streamlit as st
 import numpy as np
@@ -15,6 +10,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 import itertools, os, csv, math, warnings
+
+from mpl_toolkits.mplot3d import Axes3D  # required for 3D plot
 
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 warnings.filterwarnings('ignore', category=FutureWarning, module='sklearn')
@@ -51,7 +48,6 @@ def get_builtin_data():
 
 def train_ml_model():
     global feedback_data_count
-
     try:
         df_builtin = get_builtin_data()
         feedback_data_count = 0
@@ -74,112 +70,121 @@ def train_ml_model():
         model = RandomForestRegressor(n_estimators=100, random_state=42, max_depth=10, min_samples_split=5)
         model.fit(X, y)
         return model
-
     except Exception as err:
         st.error(f"ML training failed: {err}")
         return None
 
-def main():
-    st.title("Stress-Ribbon / Catenary Cable Profiler")
+st.set_page_config(layout="wide")
+st.title("Stress-Ribbon / Catenary Cable Profiler")
 
-    with st.sidebar:
-        st.header("Input Parameters")
-        L = st.number_input("Span L (m)", min_value=1.0, value=50.0)
-        w = st.number_input("UDL w (kN/m)", value=5.0)
-        n = st.number_input("No. of Cables", min_value=1, step=1, value=2)
-        spacing = st.number_input("Cable Spacing (m)", value=1.0)
-        dia_mm = st.number_input("Cable Dia d (mm)", value=20.0)
-        strength = st.number_input("Tensile Strength σ_tu (N/mm²)", value=1600.0)
-        mode = st.radio("Mode", ["Mathematical Only", "Mathematical + AI"])
+with st.sidebar:
+    st.header("Input Parameters")
+    L = st.number_input("Span L (m)", value=50.0)
+    w = st.number_input("UDL w (kN/m)", value=5.0)
+    n = st.number_input("No. of Cables", min_value=1, step=1, value=2)
+    spacing = st.number_input("Cable Spacing (m)", value=1.0)
+    dia_mm = st.number_input("Cable Dia (mm)", value=20.0)
+    strength = st.number_input("Tensile σ_tu (N/mm²)", value=1600.0)
+    mode = st.radio("Mode", ["Mathematical Only", "Mathematical + AI"])
 
-    if st.button("Generate Profile & Calculate"):
-        global global_sag, ml_model, last_inputs
+if st.button("Generate Profile & Calculate"):
+    global_sag = 0.0
+    last_inputs = {
+        "Span": L, "UDL": w,
+        "No. Cables": n, "Spacing": spacing,
+        "Dia": dia_mm, "Strength": strength
+    }
 
-        last_inputs = {
-            "Span": L, "UDL": w,
-            "No. Cables": n, "Spacing": spacing,
-            "Dia": dia_mm, "Strength": strength
-        }
+    if n == 1:
+        spacing = 0
 
-        if not all(val > 0 for val in [L, n, dia_mm, strength]) or w < 0:
-            st.error("All inputs must be positive (UDL may be zero).")
-            return
+    area_mm2 = math.pi * (dia_mm / 2) ** 2
+    H_kN = n * area_mm2 * strength / 1000
+    sag_eng = (w * L ** 2) / (8 * H_kN)
+    global_sag = sag_eng
 
-        if n == 1:
-            spacing = 0
+    sag_ratio = sag_eng / L * 100
+    V_kN = w * L / 2
+    T_kN = math.hypot(H_kN, V_kN)
+    σ_actual = T_kN * 1000 / (n * area_mm2)
 
-        area_mm2 = math.pi * (dia_mm / 2) ** 2
-        H_kN = n * area_mm2 * strength / 1000
-        sag_eng = (w * L ** 2) / (8 * H_kN)
-        global_sag = sag_eng
+    sag_ml = None
+    if mode == "Mathematical + AI":
+        ml_model = train_ml_model()
+        if ml_model:
+            Xnew = pd.DataFrame([[L, w, n, spacing, dia_mm, strength]],
+                                columns=['Span', 'UDL', 'No. Cables', 'Spacing', 'Dia', 'Strength'])
+            try:
+                sag_ml = ml_model.predict(Xnew)[0]
+                if sag_ml <= 0 or sag_ml > L:
+                    sag_ml = None
+            except Exception as e:
+                st.warning(f"AI prediction failed: {e}")
 
-        sag_ratio = sag_eng / L * 100
-        V_kN = w * L / 2
-        T_kN = math.hypot(H_kN, V_kN)
-        σ_actual = T_kN * 1000 / (n * area_mm2)
+    st.subheader("Results")
+    st.text(f"Cable area (single): {area_mm2:.2f} mm²")
+    st.text(f"Horizontal tension H: {H_kN:.2f} kN")
+    st.text(f"Vertical reaction V: {V_kN:.2f} kN")
+    st.text(f"Math sag f_eng: {sag_eng:.3f} m ({sag_ratio:.2f}% of span)")
+    st.text(f"Approx. tension at support: {T_kN:.2f} kN")
+    st.text(f"Actual stress σ: {σ_actual:.2f} MPa")
+    st.success("✅ σ within limit." if σ_actual <= strength else "⚠️ σ exceeds σ_tu!")
 
-        sag_ml = None
-        if mode == "Mathematical + AI":
-            ml_model = train_ml_model()
-            if ml_model is not None:
-                Xnew = pd.DataFrame([[L, w, n, spacing, dia_mm, strength]],
-                                    columns=['Span', 'UDL', 'No. Cables', 'Spacing', 'Dia', 'Strength'])
-                try:
-                    sag_ml = ml_model.predict(Xnew)[0]
-                    if sag_ml <= 0 or sag_ml > L:
-                        sag_ml = None
-                except Exception as e:
-                    st.warning(f"AI prediction failed: {e}")
+    if sag_ml:
+        st.text(f"AI sag f_ml: {sag_ml:.3f} m ({sag_ml / L * 100:.2f}% of span)")
 
-        st.subheader("Results")
-        st.text(f"Cable area (single): {area_mm2:.2f} mm²")
-        st.text(f"Horizontal tension H: {H_kN:.2f} kN")
-        st.text(f"Vertical reaction V: {V_kN:.2f} kN")
-        st.text(f"Math sag f_eng: {sag_eng:.3f} m ({sag_ratio:.2f}% of span)")
-        st.text(f"Approx. tension at support: {T_kN:.2f} kN")
-        st.text(f"Actual stress σ: {σ_actual:.2f} MPa")
-        st.success("σ within limit." if σ_actual <= strength else "⚠️ σ exceeds σ_tu!")
+    # 2D Plot
+    x = np.linspace(0, L, 100)
+    y_eng = (4 * sag_eng / L ** 2) * x * (L - x)
+    y_ml = (4 * sag_ml / L ** 2) * x * (L - x) if sag_ml else None
 
-        if sag_ml:
-            st.text(f"AI sag f_ml: {sag_ml:.3f} m ({sag_ml / L * 100:.2f}% of span)")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(x, y_eng, '--', label=f'Eng (f={sag_eng:.3f} m)')
+    if y_ml is not None:
+        ax.plot(x, y_ml, label=f'AI (f={sag_ml:.3f} m)')
+    ax.set_title(f"Stress-Ribbon Profile – L={L:.1f} m")
+    ax.set_xlabel("Length (m)")
+    ax.set_ylabel("Sag (m)")
+    ax.set_ylim(max(sag_eng, sag_ml or 0) * 1.1, -0.1)
+    ax.legend()
+    ax.grid(True, linestyle=':')
+    fig.text(0.99, 0.01, CREDIT_TEXT, ha='right', va='bottom', fontsize=6, style='italic', alpha=.7)
+    st.pyplot(fig)
 
-        x = np.linspace(0, L, 100)
-        y_eng = (4 * sag_eng / L ** 2) * x * (L - x)
-        y_ml = (4 * sag_ml / L ** 2) * x * (L - x) if sag_ml else None
+    # 3D Plot
+    if n > 0:
+        plot_sag = sag_ml if sag_ml else sag_eng
+        fig3d = plt.figure(figsize=(10, 6))
+        ax3d = fig3d.add_subplot(111, projection='3d')
 
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(x, y_eng, '--', label=f'Eng (f={sag_eng:.3f} m)')
-        if y_ml is not None:
-            ax.plot(x, y_ml, label=f'AI (f={sag_ml:.3f} m)')
-        ax.set_title(f"Stress-Ribbon Profile – L={L} m")
-        ax.set_xlabel("Length (m)")
-        ax.set_ylabel("Sag (m)")
-        ax.set_ylim(max(sag_eng, sag_ml or 0) * 1.1, -0.1)
-        ax.grid(True)
-        ax.legend()
-        fig.text(0.99, 0.01, CREDIT_TEXT, ha='right', va='bottom', fontsize=6, style='italic', alpha=.7)
-        st.pyplot(fig)
+        y_pos = np.linspace(-(n - 1) * spacing / 2, (n - 1) * spacing / 2, n) if n > 1 else [0]
+        z_curve = y_ml if y_ml is not None else y_eng
+        for i, y0 in enumerate(y_pos, start=1):
+            ax3d.plot(x, np.full_like(x, y0), z_curve, label=f'Cable {i}')
+        ax3d.set_title(f"3-D Layout (n = {n}, s = {spacing} m)")
+        ax3d.set_xlabel("Length (m)")
+        ax3d.set_ylabel("Transverse (m)")
+        ax3d.set_zlabel("Sag (m)")
+        ax3d.set_zlim(plot_sag * 1.1, 0)
+        ax3d.view_init(elev=20, azim=-50)
+        if n > 1:
+            ax3d.legend(loc='upper left')
+        fig3d.text(0.99, 0.01, CREDIT_TEXT, ha='right', va='bottom', fontsize=6, style='italic', alpha=.7)
+        st.pyplot(fig3d)
 
-        st.caption(CREDIT_TEXT)
+if st.button("Submit Feedback"):
+    feedback = st.slider("Rate Output (%)", 0, 100, 80)
+    row = [last_inputs.get(k, 0) for k in ['Span', 'UDL', 'No. Cables', 'Spacing', 'Dia', 'Strength']]
+    row += [round(global_sag, 3), feedback]
 
-    st.markdown("---")
-    if st.button("Submit Feedback"):
-        feedback = st.slider("Rate Output (%)", 0, 100, 80)
-        row = [last_inputs.get(k, 0) for k in
-               ['Span', 'UDL', 'No. Cables', 'Spacing', 'Dia', 'Strength']]
-        row += [round(global_sag, 3), feedback]
-
-        file_path = 'feedback_log.csv'
-        need_header = not os.path.exists(file_path)
-        try:
-            with open(file_path, 'a', newline='') as f:
-                writer = csv.writer(f)
-                if need_header:
-                    writer.writerow(['Span','UDL','No. Cables','Spacing','Dia','Strength','Sag','Feedback'])
-                writer.writerow(row)
-            st.success(f"✅ Feedback {feedback}% saved (Sag = {global_sag:.3f} m).")
-        except Exception as err:
-            st.error(f"Feedback save failed: {err}")
-
-if __name__ == "__main__":
-    main()
+    file_path = 'feedback_log.csv'
+    need_header = not os.path.exists(file_path)
+    try:
+        with open(file_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            if need_header:
+                writer.writerow(['Span','UDL','No. Cables','Spacing','Dia','Strength','Sag','Feedback'])
+            writer.writerow(row)
+        st.success(f"✅ Feedback {feedback}% saved (Sag = {global_sag:.3f} m).")
+    except Exception as err:
+        st.error(f"Feedback save failed: {err}")
