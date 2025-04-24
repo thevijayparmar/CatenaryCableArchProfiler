@@ -2,7 +2,7 @@
 #  Stress-Ribbon / Catenary Cable Profiler  –  Streamlit edition
 #
 #  ⚠️  NOTE TO FUTURE MAINTAINERS: Written at multiple mid-night sessions with coffee in hand.
-#      If something looks weird, blame the caffeine, not the code.
+#      If something looks weird, blame the coffee, not the code.
 #
 #  ✍️  Authors: Vijaykumar Parmar & Dr. K. B. Parikh  (2025)
 # ==============
