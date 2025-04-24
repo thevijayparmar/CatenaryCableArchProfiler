@@ -84,7 +84,7 @@ This tool is free to use and intended for academic and research purposes.
 
 ---
 
-## 🛠 Planned Extensions (Future Work)
+## 🛠 Extensions encouraged to other developers and researchers for Future Work:
 
 - Support for multi-span stress ribbon analysis
 - Real-time sensor integration
