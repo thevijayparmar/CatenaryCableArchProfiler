@@ -38,10 +38,8 @@ An interactive Python tool for estimating cable sag profiles in **Stress Ribbon 
    streamlit run app.py
    ```
 
-### On [Streamlit Cloud](https://streamlit.io/cloud)
-1. Upload all files to a GitHub repository.
-2. Sign in at [streamlit.io/cloud](https://streamlit.io/cloud).
-3. Create a new app pointing to your repo and `app.py`.
+### On [Streamlit Cloud]
+1. To try this code without installation on web, user can use the link to test: https://catenarycablearchprofiler.streamlit.app/
 
 ---
 
